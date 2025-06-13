@@ -72,87 +72,43 @@ async fn get_status(client: &Client, get_url: &str) -> Result<ProcessStatus> {
     Ok(process_status(status))
 }
 
+use openai_api_rs::v1::api::OpenAIClient;
+use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
+use openai_api_rs::v1::common::GPT4_O_MINI;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let api_key = env::var("OPENROUTER_API_KEY").unwrap().to_string();
+    let mut client = OpenAIClient::builder()
+        .with_endpoint("https://openrouter.ai/api/v1")
+        .with_api_key(api_key)
+        .build()?;
+
     let input = CLIInput::parse();
-    let mut auth_header: String = String::new();
 
-    if let Some(auth) = input.Authorization {
-        auth_header = format!("{auth}");
-    } else if let Ok(API_KEY) = env::var(&"REPLICATE_API_TOKEN") {
-        auth_header = API_KEY;
-    } else {
-        eprintln!("Authorization header is required.");
-        return Ok(());
-    }
-
-    // let mut client = Client::new();
-    let mut default_headers = HeaderMap::new();
-    default_headers.insert(
-        "Authorization",
-        HeaderValue::from_str(&format!("Bearer {auth_header}")).unwrap(),
+    let req = ChatCompletionRequest::new(
+        GPT4_O_MINI.to_string(),
+        vec![chat_completion::ChatCompletionMessage {
+            role: chat_completion::MessageRole::user,
+            content: chat_completion::Content::Text(input.prompt),
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
     );
-    default_headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-    default_headers.insert("Prefer", HeaderValue::from_static("wait"));
 
-    let mut client = Client::builder().default_headers(default_headers).build()?;
+    let result = client.chat_completion(req).await?;
+    // println!("Content: {:?}", result.choices[0].message.content);
+    let message = result.choices[0]
+        .message
+        .content
+        .clone()
+        .unwrap_or_else(|| "Not result".to_string());
 
-    let llm_input = Input {
-        prompt: input.prompt,
-        system_prompt: input
-            .system_prompt
-            .unwrap_or_else(|| "You are a helpful assistant.".to_string()),
-    };
+    println!("{message}");
 
-    let req_body = RequestBody { input: llm_input };
-
-    let resp = client.post(LLM_ENDPOINT).json(&req_body).send().await?;
-
-    let json: serde_json::Value = resp.json().await?;
-
-    let get_url = json
-        .get("urls")
-        .and_then(|urls| urls.get("get"))
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-
-    println!("URL: {}", get_url);
-    loop {
-        match get_status(&client, &get_url).await.unwrap() {
-            ProcessStatus::Starting | ProcessStatus::Processing => (),
-            ProcessStatus::Succeeded => {
-                println!("Process succeeded.");
-                break;
-            }
-            _ => break,
-        }
-
-        sleep(Duration::from_millis(100));
-    }
-    let results = client.get(get_url).send().await?;
-    if let Ok(res_text) = results.text().await {
-        // println!("Response Text: {res_text}");
-
-        let output: serde_json::Value = serde_json::from_str(&res_text)
-            .unwrap_or_else(|_| serde_json::json!({"error": "Failed to parse response"}));
-        // println!("Output: {:#?}", &output);
-        let res = &output["output"];
-        println!("The LLM output\n");
-        match &res {
-            serde_json::Value::String(s) => println!("{}", s),
-            serde_json::Value::Array(arr) => {
-                for item in arr {
-                    if let Some(s) = item.as_str() {
-                        print!("{}", s);
-                    } else {
-                        print!("{:?}", item);
-                    }
-                }
-            }
-            _ => println!("Unexpected response format: {:?}", res),
-        }
-    } else {
-        println!("Failed to get response text.");
+    for (key, value) in client.response_headers.unwrap().iter() {
+        println!("{}: {:?}", key, value);
     }
 
     Ok(())
