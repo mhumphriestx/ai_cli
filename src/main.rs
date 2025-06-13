@@ -4,8 +4,6 @@ use clap::{Args, Parser};
 use serde::Serialize;
 use std::env;
 
-// const LLM_ENDPOINT: &str = "https://api.replicate.com/v1/models/openai/gpt-4o-mini/predictions";
-
 #[derive(Args, Debug, Serialize, Default)]
 #[group(required = false, multiple = false)]
 struct Mode {
@@ -73,7 +71,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let req = ChatCompletionRequest::new(
-        // GPT4_O_MINI.to_string(),
         model.to_string(),
         vec![chat_completion::ChatCompletionMessage {
             role: chat_completion::MessageRole::user,
@@ -85,12 +82,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = client.chat_completion(req).await?;
-    // println!("Content: {:?}", result.choices[0].message.content);
     let message = result.choices[0]
         .message
         .content
         .clone()
-        .unwrap_or_else(|| "Not result".to_string());
+        .unwrap_or_else(|| "No results".to_string());
 
     println!("{message}");
 
