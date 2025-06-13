@@ -1,49 +1,53 @@
 use anyhow::Result;
-use clap::Parser;
-use reqwest::{Client, header::HeaderMap, header::HeaderValue};
+use clap::{Args, Parser};
+
 use serde::Serialize;
-use serde_json::{self, Value};
-use std::collections::HashMap;
 use std::env;
-use std::thread::sleep;
-
-use std::time::Duration;
-
-const LLM_ENDPOINT: &str =
-    "https://api.replicate.com/v1/models/deepseek-ai/deepseek-r1/predictions";
 
 // const LLM_ENDPOINT: &str = "https://api.replicate.com/v1/models/openai/gpt-4o-mini/predictions";
 
+#[derive(Args, Debug, Serialize, Default)]
+#[group(required = false, multiple = false)]
+struct Mode {
+    /// Use fast mode (default)
+    #[arg(long, short, group = "mode", help = "Use fast mode (default)")]
+    fast: bool,
+
+    /// Use normal mode
+    #[arg(long, short, group = "mode", help = "Use normal model")]
+    normal: bool,
+
+    /// Use code mode
+    #[arg(long, short, group = "mode", help = "Use a coding model")]
+    code: bool,
+
+    /// Use code mode
+    #[arg(long, short, group = "mode", help = "Use a thinking model")]
+    think: bool,
+}
 #[derive(Serialize, Parser, Default)]
 struct CLIInput {
-    // your fields here
     #[arg(short, long)]
-    Authorization: Option<String>,
+    authorization: Option<String>,
     #[arg()]
     prompt: String,
-    #[arg(short, long)]
+    #[arg(short, long, help = "Provide a custom system prompt")]
     system_prompt: Option<String>,
-}
-
-#[derive(Serialize, Default)]
-struct RequestHeader {
-    Authorization: String,
-}
-
-#[derive(Serialize)]
-struct RequestBody {
-    input: Input,
-}
-
-#[derive(Serialize)]
-struct Input {
-    prompt: String,
-    system_prompt: String,
+    #[command(flatten, next_help_heading = "Mode Selection (select one)")]
+    mode: Mode,
+    #[arg(short, long, help = "Print response headers (debug)")]
+    debug: bool,
 }
 
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
 use openai_api_rs::v1::common::GPT4_O_MINI;
+
+const fast_model: &str = GPT4_O_MINI;
+const normal_model: &str = "openai/gpt-4.1";
+
+const code_model: &str = "anthropic/claude-3.7-sonnet";
+const thinking_model: &str = "google/gemini-2.5-pro-preview";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,8 +59,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let input = CLIInput::parse();
 
+    let mode = input.mode;
+    let model = if mode.fast {
+        fast_model
+    } else if mode.normal {
+        normal_model
+    } else if mode.code {
+        code_model
+    } else if mode.think {
+        thinking_model
+    } else {
+        fast_model // Default to fast model if no mode is selected
+    };
+
     let req = ChatCompletionRequest::new(
-        GPT4_O_MINI.to_string(),
+        // GPT4_O_MINI.to_string(),
+        model.to_string(),
         vec![chat_completion::ChatCompletionMessage {
             role: chat_completion::MessageRole::user,
             content: chat_completion::Content::Text(input.prompt),
@@ -76,8 +94,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{message}");
 
-    for (key, value) in client.response_headers.unwrap().iter() {
-        println!("{}: {:?}", key, value);
+    if input.debug {
+        for (key, value) in client.response_headers.unwrap().iter() {
+            println!("{}: {:?}", key, value);
+        }
     }
 
     Ok(())
