@@ -41,37 +41,6 @@ struct Input {
     system_prompt: String,
 }
 
-enum ProcessStatus {
-    Starting,
-    Processing,
-    Succeeded,
-    Failed,
-    Canceled,
-}
-
-fn process_status(status: &str) -> ProcessStatus {
-    match status {
-        "starting" => ProcessStatus::Starting,
-        "processing" => ProcessStatus::Processing,
-        "succeeded" => ProcessStatus::Succeeded,
-        "failed" => ProcessStatus::Failed,
-        "canceled" => ProcessStatus::Canceled,
-        _ => ProcessStatus::Failed, // Default case
-    }
-}
-
-async fn get_status(client: &Client, get_url: &str) -> Result<ProcessStatus> {
-    let resp = client.get(get_url).send().await?;
-    let status_text = resp.text().await?;
-    let status_json: Value = serde_json::from_str(&status_text)?;
-
-    let status = status_json
-        .get("status")
-        .and_then(|s| s.as_str())
-        .unwrap_or("unknown");
-    Ok(process_status(status))
-}
-
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
 use openai_api_rs::v1::common::GPT4_O_MINI;
