@@ -1,8 +1,9 @@
-use anyhow::Result;
 use clap::{Args, Parser};
 
 use serde::Serialize;
 use std::env;
+mod console;
+use anyhow::Result;
 
 #[derive(Args, Debug, Serialize, Default)]
 #[group(required = false, multiple = false)]
@@ -33,6 +34,8 @@ struct CLIInput {
     system_prompt: Option<String>,
     #[command(flatten, next_help_heading = "Mode Selection (select one)")]
     mode: Mode,
+    #[arg(short, long, help = "Launch interactive console UI")]
+    console: bool,
     #[arg(short, long, help = "Print response headers (debug)")]
     debug: bool,
 }
@@ -56,7 +59,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let input = CLIInput::parse();
-
     let mode = input.mode;
     let model = if mode.fast {
         fast_model
@@ -69,6 +71,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         fast_model // Default to fast model if no mode is selected
     };
+
+    if input.console {
+        console::run_console(&mut client, model).await?;
+        return Ok(());
+    }
 
     let req = ChatCompletionRequest::new(
         model.to_string(),
