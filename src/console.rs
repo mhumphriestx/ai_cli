@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{
     ChatCompletionMessage, ChatCompletionRequest, Content, MessageRole,
@@ -38,8 +38,8 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
 
         if let Event::Key(key) = event::read()? {
             match key.code {
-                KeyCode::Char('q') => break,
-                KeyCode::Enter => {
+                KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
+                KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     let prompt = input.drain(..).collect::<String>();
                     history.push(format!("You: {}", prompt));
                     let req = ChatCompletionRequest::new(
@@ -56,6 +56,9 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                         let reply = res.choices[0].message.content.clone().unwrap_or_default();
                         history.push(format!("Bot: {}", reply));
                     }
+                }
+                KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    history.clear();
                 }
                 KeyCode::Backspace => {
                     input.pop();

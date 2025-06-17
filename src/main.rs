@@ -32,12 +32,12 @@ struct CLIInput {
     prompt: String,
     #[arg(short, long, help = "Provide a custom system prompt")]
     system_prompt: Option<String>,
-    #[command(flatten, next_help_heading = "Mode Selection (select one)")]
-    mode: Mode,
-    #[arg(short, long, help = "Launch interactive console UI")]
-    console: bool,
+    #[arg(short = 'C', long, help = "Launch interactive console UI")]
+    Console: bool,
     #[arg(short, long, help = "Print response headers (debug)")]
     debug: bool,
+    #[command(flatten, next_help_heading = "Mode Selection (select one)")]
+    mode: Mode,
 }
 
 use openai_api_rs::v1::api::OpenAIClient;
@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         fast_model // Default to fast model if no mode is selected
     };
 
-    if input.console {
+    if input.Console {
         console::run_console(&mut client, model).await?;
         return Ok(());
     }
