@@ -1,5 +1,8 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::{
+    event::{self, Event, KeyCode, KeyModifiers},
+    terminal,
+};
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{
     ChatCompletionMessage, ChatCompletionRequest, Content, MessageRole,
@@ -11,9 +14,10 @@ use std::io;
 
 pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
     let mut stdout = io::stdout();
-    crossterm::terminal::enable_raw_mode()?;
+    terminal::enable_raw_mode()?;
     let backend = CrosstermBackend::new(&mut stdout);
     let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
 
     let mut input = String::new();
     let mut history: Vec<String> = Vec::new();
@@ -71,7 +75,7 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
         }
     }
 
-    crossterm::terminal::disable_raw_mode()?;
+    terminal::disable_raw_mode()?;
     terminal.show_cursor()?;
     Ok(())
 }
