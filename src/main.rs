@@ -29,7 +29,7 @@ struct CLIInput {
     #[arg(short, long)]
     authorization: Option<String>,
     #[arg()]
-    prompt: String,
+    prompt: Option<String>,
     #[arg(short, long, help = "Provide a custom system prompt")]
     system_prompt: Option<String>,
     #[arg(short = 'C', long, help = "Launch interactive console UI")]
@@ -77,11 +77,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    let prompt = input.prompt.unwrap_or_else(|| {
+        println!("Please enter a prompt:");
+        let mut user_input = String::new();
+        std::io::stdin().read_line(&mut user_input).unwrap();
+        user_input.trim().to_string()
+    });
+
     let req = ChatCompletionRequest::new(
         model.to_string(),
         vec![chat_completion::ChatCompletionMessage {
             role: chat_completion::MessageRole::user,
-            content: chat_completion::Content::Text(input.prompt),
+            content: chat_completion::Content::Text(prompt),
             name: None,
             tool_calls: None,
             tool_call_id: None,

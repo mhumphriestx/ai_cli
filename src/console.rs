@@ -9,14 +9,10 @@ use openai_api_rs::v1::chat_completion::{
 };
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::{Block, Borders, Paragraph};
-use ratatui::{Terminal, backend::CrosstermBackend};
-use std::io;
 
 pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
-    let mut stdout = io::stdout();
     terminal::enable_raw_mode()?;
-    let backend = CrosstermBackend::new(&mut stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = ratatui::init();
     terminal.clear()?;
 
     let mut input = String::new();
@@ -27,17 +23,21 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Min(1), Constraint::Length(3)].as_ref())
-                .split(f.size());
+                .split(f.area());
 
             let history_text = history.join("\n");
             let history_para = Paragraph::new(history_text)
                 .block(Block::default().borders(Borders::ALL).title("History"));
             f.render_widget(history_para, chunks[0]);
 
-            let input_para = Paragraph::new(input.as_ref())
+            let input_para = Paragraph::new(input.clone())
                 .block(Block::default().borders(Borders::ALL).title("Input"));
             f.render_widget(input_para, chunks[1]);
-            f.set_cursor(chunks[1].x + input.len() as u16 + 1, chunks[1].y + 1);
+
+            f.set_cursor_position(ratatui::layout::Position::new(
+                chunks[1].x + input.len() as u16 + 1,
+                chunks[1].y + 1,
+            ));
         })?;
 
         if let Event::Key(key) = event::read()? {
@@ -75,7 +75,6 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
         }
     }
 
-    terminal::disable_raw_mode()?;
-    terminal.show_cursor()?;
+    ratatui::restore();
     Ok(())
 }
