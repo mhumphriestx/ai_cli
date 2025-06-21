@@ -43,11 +43,11 @@ pub fn update_terminal(
 
         let mut history_text = String::new();
         for msg in history {
-            match msg {
-                &Message::USER(ref user_msg) => {
+            match *msg {
+                Message::USER(ref user_msg) => {
                     history_text.push_str(&format!("You: {}\n", extract_message_text(user_msg)));
                 }
-                &Message::SYSTEM(ref system_msg) => {
+                Message::SYSTEM(ref system_msg) => {
                     history_text.push_str(&format!("Bot: {}\n", extract_message_text(system_msg)));
                 }
             }
@@ -101,7 +101,17 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                     msg_history.push(Message::USER(chat_msg.clone()));
 
                     update_terminal(&mut terminal, &mut input, &mut msg_history)?;
-                    let req = ChatCompletionRequest::new(model.to_string(), vec![chat_msg.clone()]);
+                    // let req = ChatCompletionRequest::new(model.to_string(), vec![chat_msg.clone()]);
+                    let req = ChatCompletionRequest::new(
+                        model.to_string(),
+                        msg_history
+                            .iter()
+                            .map(|msg| match msg {
+                                Message::USER(user_msg) => user_msg.clone(),
+                                Message::SYSTEM(system_msg) => system_msg.clone(),
+                            })
+                            .collect(),
+                    );
                     if let Ok(res) = client.chat_completion(req.clone()).await {
                         let reply = res.choices[0].message.content.clone().unwrap_or_default();
 
