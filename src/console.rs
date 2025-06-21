@@ -11,15 +11,22 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
-enum History {
+pub enum Message {
     USER(ChatCompletionMessage),
     SYSTEM(ChatCompletionMessage),
+}
+
+pub fn extract_message_text(msg: &ChatCompletionMessage) -> &str {
+    match msg.content {
+        Content::Text(ref text) => text,
+        Content::ImageUrl(_) => "An image",
+    }
 }
 
 pub fn update_terminal(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     input: &mut String,
-    history: &mut Vec<String>,
+    history: &Vec<Message>,
 ) -> Result<()> {
     terminal.draw(|f| {
         let chunks = Layout::default()
@@ -34,7 +41,18 @@ pub fn update_terminal(
             )
             .split(f.area());
 
-        let history_text = history.join("\n");
+        let mut history_text = String::new();
+        for msg in history {
+            match msg {
+                &Message::USER(ref user_msg) => {
+                    history_text.push_str(&format!("You: {}\n", extract_message_text(user_msg)));
+                }
+                &Message::SYSTEM(ref system_msg) => {
+                    history_text.push_str(&format!("Bot: {}\n", extract_message_text(system_msg)));
+                }
+            }
+        }
+
         let history_para = Paragraph::new(history_text)
             .block(Block::default().borders(Borders::ALL).title("History"));
         f.render_widget(history_para, chunks[0]);
@@ -63,10 +81,10 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
 
     let mut input = String::new();
     let mut history: Vec<String> = Vec::new();
-    let mut msg_history: Vec<History> = Vec::new();
+    let mut msg_history: Vec<Message> = Vec::new();
 
     loop {
-        update_terminal(&mut terminal, &mut input, &mut history);
+        update_terminal(&mut terminal, &mut input, &msg_history);
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
@@ -80,25 +98,27 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                         tool_calls: None,
                         tool_call_id: None,
                     };
+                    msg_history.push(Message::USER(chat_msg.clone()));
 
-                    update_terminal(&mut terminal, &mut input, &mut history)?;
+                    update_terminal(&mut terminal, &mut input, &mut msg_history)?;
                     let req = ChatCompletionRequest::new(model.to_string(), vec![chat_msg.clone()]);
                     if let Ok(res) = client.chat_completion(req.clone()).await {
-                        msg_history.push(History::USER(chat_msg));
+                        let reply = res.choices[0].message.content.clone().unwrap_or_default();
+
                         let system_msg = ChatCompletionMessage {
                             role: MessageRole::system,
-                            content: Content::Text("".to_string()),
+                            content: Content::Text(reply),
                             name: None,
                             tool_calls: None,
                             tool_call_id: None,
                         };
-                        msg_history.push(History::SYSTEM(system_msg));
-                        let reply = res.choices[0].message.content.clone().unwrap_or_default();
-                        history.push(format!("Bot: {}", reply));
+                        msg_history.push(Message::SYSTEM(system_msg));
+
+                        // history.push(format!("Bot: {}", reply));
                     }
                 }
                 KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    history.clear();
+                    msg_history.clear();
                 }
                 KeyCode::Backspace => {
                     input.pop();
