@@ -1,4 +1,5 @@
 use anyhow::Result;
+use colored::Colorize;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     terminal,
@@ -14,6 +15,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 pub enum Message {
     USER(ChatCompletionMessage),
     SYSTEM(ChatCompletionMessage),
+    ASSISTANT(ChatCompletionMessage),
 }
 
 pub fn extract_message_text(msg: &ChatCompletionMessage) -> &str {
@@ -45,16 +47,24 @@ pub fn update_terminal(
         for msg in history {
             match *msg {
                 Message::USER(ref user_msg) => {
-                    history_text.push_str(&format!("You: {}\n", extract_message_text(user_msg)));
+                    let text = format!("You: {}\n", extract_message_text(user_msg))
+                        .red()
+                        .to_string();
+                    history_text.push_str(&text);
                 }
-                Message::SYSTEM(ref system_msg) => {
-                    history_text.push_str(&format!("Bot: {}\n", extract_message_text(system_msg)));
+                Message::ASSISTANT(ref system_msg) => {
+                    let text = format!("Bot: {}\n", extract_message_text(system_msg))
+                        .green()
+                        .to_string();
+                    history_text.push_str(&text);
                 }
+                _ => (),
             }
         }
 
         let history_para = Paragraph::new(history_text)
-            .block(Block::default().borders(Borders::ALL).title("History"));
+            .block(Block::default().borders(Borders::ALL).title("History"))
+            .wrap(ratatui::widgets::Wrap { trim: false });
         f.render_widget(history_para, chunks[0]);
 
         let input_para = Paragraph::new(input.clone())
@@ -74,6 +84,7 @@ pub fn update_terminal(
     })?;
     Ok(())
 }
+
 pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
     let mut terminal = ratatui::init();
     terminal::enable_raw_mode()?;
@@ -108,6 +119,8 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                             .iter()
                             .map(|msg| match msg {
                                 Message::USER(user_msg) => user_msg.clone(),
+                                Message::ASSISTANT(assistant_msg) => assistant_msg.clone(),
+
                                 Message::SYSTEM(system_msg) => system_msg.clone(),
                             })
                             .collect(),
@@ -116,13 +129,13 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                         let reply = res.choices[0].message.content.clone().unwrap_or_default();
 
                         let system_msg = ChatCompletionMessage {
-                            role: MessageRole::system,
+                            role: MessageRole::assistant,
                             content: Content::Text(reply),
                             name: None,
                             tool_calls: None,
                             tool_call_id: None,
                         };
-                        msg_history.push(Message::SYSTEM(system_msg));
+                        msg_history.push(Message::ASSISTANT(system_msg));
 
                         // history.push(format!("Bot: {}", reply));
                     }
