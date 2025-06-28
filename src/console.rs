@@ -11,6 +11,8 @@ use openai_api_rs::v1::chat_completion::{
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{Terminal, backend::CrosstermBackend};
+use std::mem;
+use tui_textarea::TextArea;
 
 pub enum Message {
     USER(ChatCompletionMessage),
@@ -29,6 +31,7 @@ pub fn update_terminal(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     input: &mut String,
     history: &Vec<Message>,
+    input_area: &TextArea,
 ) -> Result<()> {
     terminal.draw(|f| {
         let chunks = Layout::default()
@@ -70,7 +73,8 @@ pub fn update_terminal(
         let input_para = Paragraph::new(input.clone())
             .block(Block::default().borders(Borders::ALL).title("Input"))
             .wrap(Wrap { trim: false });
-        f.render_widget(input_para, chunks[1]);
+        // f.render_widget(input_para, chunks[1]);
+        f.render_widget(input_area, chunks[1]);
 
         f.set_cursor_position(ratatui::layout::Position::new(
             chunks[1].x + input.len() as u16 + 1,
@@ -93,14 +97,17 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
     let mut input = String::new();
     let mut history: Vec<String> = Vec::new();
     let mut msg_history: Vec<Message> = Vec::new();
+    let mut input_area = TextArea::default();
+    input_area.set_block(Block::default().borders(Borders::ALL).title("Input"));
 
     loop {
-        update_terminal(&mut terminal, &mut input, &msg_history);
+        update_terminal(&mut terminal, &mut input, &msg_history, &input_area);
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
                 KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    let prompt = input.drain(..).collect::<String>();
+                    // let prompt = input.drain(..).collect::<String>();
+                    let prompt = mem::take(&mut input);
                     history.push(format!("You: {}", prompt));
                     let chat_msg = ChatCompletionMessage {
                         role: MessageRole::user,
@@ -111,7 +118,7 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                     };
                     msg_history.push(Message::USER(chat_msg.clone()));
 
-                    update_terminal(&mut terminal, &mut input, &mut msg_history)?;
+                    update_terminal(&mut terminal, &mut input, &mut msg_history, &input_area)?;
                     // let req = ChatCompletionRequest::new(model.to_string(), vec![chat_msg.clone()]);
                     let req = ChatCompletionRequest::new(
                         model.to_string(),
@@ -148,6 +155,7 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                 }
                 KeyCode::Char(c) => {
                     input.push(c);
+                    input_area.insert_char(c);
                 }
                 _ => {}
             }
