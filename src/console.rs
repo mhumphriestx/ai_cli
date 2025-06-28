@@ -29,7 +29,6 @@ pub fn extract_message_text(msg: &ChatCompletionMessage) -> &str {
 
 pub fn update_terminal(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-    input: &mut String,
     history: &Vec<Message>,
     input_area: &TextArea,
 ) -> Result<()> {
@@ -70,16 +69,7 @@ pub fn update_terminal(
             .wrap(ratatui::widgets::Wrap { trim: false });
         f.render_widget(history_para, chunks[0]);
 
-        let input_para = Paragraph::new(input.clone())
-            .block(Block::default().borders(Borders::ALL).title("Input"))
-            .wrap(Wrap { trim: false });
-        // f.render_widget(input_para, chunks[1]);
         f.render_widget(input_area, chunks[1]);
-
-        f.set_cursor_position(ratatui::layout::Position::new(
-            chunks[1].x + input.len() as u16 + 1,
-            chunks[1].y + 1,
-        ));
 
         f.render_widget(
             Paragraph::new("Ctrl+S:send|Ctrl+Q:quit|Ctrl+N:clear history"),
@@ -101,7 +91,7 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
     input_area.set_block(Block::default().borders(Borders::ALL).title("Input"));
 
     loop {
-        update_terminal(&mut terminal, &mut input, &msg_history, &input_area);
+        update_terminal(&mut terminal, &msg_history, &input_area);
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
@@ -118,7 +108,7 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                     };
                     msg_history.push(Message::USER(chat_msg.clone()));
 
-                    update_terminal(&mut terminal, &mut input, &mut msg_history, &input_area)?;
+                    update_terminal(&mut terminal, &mut msg_history, &input_area)?;
                     // let req = ChatCompletionRequest::new(model.to_string(), vec![chat_msg.clone()]);
                     let req = ChatCompletionRequest::new(
                         model.to_string(),
@@ -146,15 +136,15 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
 
                         // history.push(format!("Bot: {}", reply));
                     }
+                    let block = input_area.block().unwrap_or(&Block::default()).clone();
+                    input_area = TextArea::default();
+                    input_area.set_block(block);
                 }
                 KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    //todo: clear the  history
                     msg_history.clear();
                 }
-                KeyCode::Backspace => {
-                    input.pop();
-                }
                 KeyCode::Char(c) => {
-                    input.push(c);
                     input_area.insert_char(c);
                 }
                 _ => {}
