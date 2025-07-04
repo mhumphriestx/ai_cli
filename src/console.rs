@@ -1,18 +1,19 @@
 use anyhow::Result;
 use colored::Colorize;
-use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
-    terminal,
-};
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{
     ChatCompletionMessage, ChatCompletionRequest, ChatCompletionResponse, Content, MessageRole,
+};
+use ratatui::crossterm::{
+    event::{self, Event, KeyCode, KeyModifiers},
+    terminal,
 };
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::mem;
-use tui_textarea::TextArea;
+use std::{fmt, fmt::Display};
+use tui_textarea::{Input, Key, TextArea};
 
 pub enum Message {
     USER(ChatCompletionMessage),
@@ -20,10 +21,24 @@ pub enum Message {
     ASSISTANT(ChatCompletionMessage),
 }
 
-pub fn extract_message_text(msg: &ChatCompletionMessage) -> &str {
-    match msg.content {
-        Content::Text(ref text) => text,
-        Content::ImageUrl(_) => "An image",
+impl Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = match self {
+            Message::USER(msg) => format!("You: {}", Self::extract_message_text(msg)),
+            Message::ASSISTANT(msg) => format!("Bot: {}", Self::extract_message_text(msg)),
+            Message::SYSTEM(msg) => format!("System: {}", Self::extract_message_text(msg)),
+        };
+
+        write!(f, "{}", text)
+    }
+}
+
+impl Message {
+    fn extract_message_text(msg: &ChatCompletionMessage) -> &str {
+        match msg.content {
+            Content::Text(ref text) => text,
+            Content::ImageUrl(_) => "An image",
+        }
     }
 }
 
@@ -47,21 +62,11 @@ pub fn update_terminal(
 
         let mut history_text = String::new();
         for msg in history {
-            match *msg {
-                Message::USER(ref user_msg) => {
-                    let text = format!("You: {}\n", extract_message_text(user_msg))
-                        .red()
-                        .to_string();
-                    history_text.push_str(&text);
-                }
-                Message::ASSISTANT(ref system_msg) => {
-                    let text = format!("Bot: {}\n", extract_message_text(system_msg))
-                        .green()
-                        .to_string();
-                    history_text.push_str(&text);
-                }
-                _ => (),
-            }
+            let text = match msg {
+                Message::USER(_) => msg.to_string().red().to_string(),
+                _ => msg.to_string().green().to_string(),
+            };
+            history_text.push_str(&format!("{}\n", text));
         }
 
         let history_para = Paragraph::new(history_text)
@@ -82,23 +87,19 @@ pub fn update_terminal(
 pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
     let mut terminal = ratatui::init();
     terminal::enable_raw_mode()?;
-    // terminal.clear()?;
 
-    let mut input = String::new();
-    let mut history: Vec<String> = Vec::new();
     let mut msg_history: Vec<Message> = Vec::new();
     let mut input_area = TextArea::default();
     input_area.set_block(Block::default().borders(Borders::ALL).title("Input"));
 
     loop {
-        update_terminal(&mut terminal, &msg_history, &input_area);
-        if let Event::Key(key) = event::read()? {
+        update_terminal(&mut terminal, &msg_history, &input_area)?;
+        let event = event::read()?;
+        if let Event::Key(key) = event {
             match key.code {
                 KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
                 KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    // let prompt = input.drain(..).collect::<String>();
-                    let prompt = mem::take(&mut input);
-                    history.push(format!("You: {}", prompt));
+                    let prompt = input_area.lines().join("\n");
                     let chat_msg = ChatCompletionMessage {
                         role: MessageRole::user,
                         content: Content::Text(prompt.clone()),
@@ -108,8 +109,7 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                     };
                     msg_history.push(Message::USER(chat_msg.clone()));
 
-                    update_terminal(&mut terminal, &mut msg_history, &input_area)?;
-                    // let req = ChatCompletionRequest::new(model.to_string(), vec![chat_msg.clone()]);
+                    update_terminal(&mut terminal, &msg_history, &input_area)?;
                     let req = ChatCompletionRequest::new(
                         model.to_string(),
                         msg_history
@@ -133,23 +133,21 @@ pub async fn run_console(client: &mut OpenAIClient, model: &str) -> Result<()> {
                             tool_call_id: None,
                         };
                         msg_history.push(Message::ASSISTANT(system_msg));
-
-                        // history.push(format!("Bot: {}", reply));
                     }
                     let block = input_area.block().unwrap_or(&Block::default()).clone();
                     input_area = TextArea::default();
                     input_area.set_block(block);
+                    continue;
                 }
                 KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    //todo: clear the  history
                     msg_history.clear();
-                }
-                KeyCode::Char(c) => {
-                    input_area.insert_char(c);
+                    continue;
                 }
                 _ => {}
             }
         }
+
+        input_area.input(event);
     }
 
     ratatui::restore();
